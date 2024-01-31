@@ -1,12 +1,5 @@
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision
-import matplotlib
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-import copy
 import cv2
 
 import models
