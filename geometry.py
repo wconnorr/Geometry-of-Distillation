@@ -9,19 +9,11 @@ from tqdm import tqdm
 import copy
 
 import models
+from helper import num_parameters, load_model
 
 NOGRAD_BATCHSIZE = 4096 # higher value than training batch size, lets us parallelize geometric funcs better
 
 device = 'cuda'#'cuda' if torch.cuda.is_available() else 'cpu'
-
-def calc_FIM(model, dataset):
-  dataloader = torch.utils.data.DataLoader(dataset, batch_size=NOGRAD_BATCHSIZE, shuffle=False)
-  with torch.no_grad():
-    M = len(dataset)
-    N = num_parameters(model)
-    sigma2 = np.linalg.norm(torch.cat([(y - model(x)).view(x.size(0),-1) for x,y in dataloader], dim=0).numpy()) / (M-N)
-  J = torch.cat([torch.autograd.functional.jacobian(model, x).view(x.size(0),-1) for x,_ in dataloader], dim=0).numpy()
-  return J.T@J / sigma2
 
 def loss_on_distiller(theta):
   model = models.SimpleConvNet(1, 28, 28, 10).to(device)
@@ -46,12 +38,6 @@ def calc_FIM_distill(model, distiller):
   J = J.view(-1, x.flatten().size(0)).cpu().numpy()
   print("Resized Jacobian: {}".format(J.shape))
   return J.T@J / sigma2
-
-def num_parameters(model):
-  count = 0
-  for param in model.parameters():
-    count += np.prod(list(param.shape))
-  return count
 
 def calc_loss(model):
   dataloader = torch.utils.data.DataLoader(mnist, batch_size=NOGRAD_BATCHSIZE, shuffle=False)
@@ -181,16 +167,13 @@ def model_manifold_curvature(model, distiller, delta, saveto):
   fig.savefig(saveto + 'sl.png', dpi=fig.dpi)
   plt.close('all')
 
-def load_model(model, filepath):
-  sd = torch.load(filepath, map_location=device)
-  model.load_state_dict(sd)
-  return model
+
 
 # model = models.SimpleConvNet(1, 28, 28, 10).to(device)
 # print("Small conv network has {} parameters!".format(num_parameters(model)))
 
 # model_sd_file = './sl_exp/experiments/mnist_sl_saveinit/checkpoint_final1/learner_sd.pt'
-# load_model(model, model_sd_file)
+# load_model(model, model_sd_file, device)
 
 # print(model)
 
