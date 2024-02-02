@@ -25,7 +25,7 @@ def calc_FIM(model, dataset):
 
 def loss_on_distiller(theta):
   model = models.SimpleConvNet(1, 28, 28, 10).to(device)
-  set_model_parameters(model, theta)
+  set_model_parameters(model, 0, 0, 0, 0)
   return F.mse_loss(model(x), y, reduction="None")
 
 def calc_FIM_distill(model, distiller):
@@ -36,16 +36,24 @@ def calc_FIM_distill(model, distiller):
     N = num_parameters(model)
     sigma2 = np.linalg.norm((y - model(x)).view(x.size(0),-1).cpu().numpy()) / (M-N)
     print("σ^2 = {}".format(sigma2))
-  # J = torch.autograd.functional.jacobian(model, x)
-  theta = model.parameters()
-  J = torch.autograd.functional.jacobian(loss_on_distiller, theta)
-  print("Jacobian size: {}".format(J.shape))
-  # NOTE: Jacobian is combined (output_size, input_size): [(6, 10), (6,1,28,28)]
-  # TODO: SHOULD BE (# datapoints x # params), so FIM is (# params x # params)!!!!
-  #       THAT IS TO SAY, WE WANT jacobian(loss_on_xy, θ), where loss is not reduced
-  J = J.view(-1, x.flatten().size(0)).cpu().numpy()
-  print("Resized Jacobian: {}".format(J.shape))
-  return J.T@J / sigma2
+  # If we want to use .backward(), we can get each row of the jacobian individually
+  J = []
+  model.zero_grad()
+  for xi, yi in zip(x, y):
+    lossi = F.mse_loss(model(xi.unsqueeze(0)), yi.unsqueeze(0))
+    # NOTE: may not be loss? Maybe treat each output as its own datapoint (not sure how that makes sense tho)
+    lossi.backward()
+    # Flatten param.grad for all params: this is one row of J
+    grads = [param.grad.flatten().cpu() for param in model.parameters()]
+    J.append(torch.cat(grads, dim=0))
+    model.zero_grad()
+  with torch.no_grad():
+    J = torch.stack(J).cpu().numpy()
+    print(J.shape)
+    # TODO: Need a smaller network to have reasonable J
+    # POTENTIAL FIX: get one layer's J anc calculate prediction uncertainty from that.
+    return J.T@J / sigma2
+    # Now we can get parameter uncertainty: diag(FIM^-1); and prediction/output uncertainty: diag(J FIM^-1 J`)
 
 def num_parameters(model):
   count = 0
