@@ -4,12 +4,17 @@ import cv2
 
 import models
 
+from helper import load_distiller_sd_fabric
+
 device = torch.device('cpu')
 
 # mnist = torchvision.datasets.MNIST(r"~/Datasets/MNIST", train=True, transform=torchvision.transforms.ToTensor(), download=True)
 # cv2.imwrite('./mnist0.png', mnist[0][0].squeeze(0).numpy()*256)
 
-distiller_sd = torch.load('./sl_exp/experiments/distill_long_highval/checkpoint_final1/distiller_sd.pt', map_location=device)
+# distiller_sd = torch.load('./sl_exp/experiments/distill_long_highval/checkpoint_final1/distiller_sd.pt', map_location=device)
+distiller_sd_file = './sl_exp/lightning_distill_6gpu/checkpoint6/state.ckpt'
+distiller_sd = load_distiller_sd_fabric(distiller_sd_file)
+
 distill_batch_size = distiller_sd['x'].size(0)
 print("Using {} distilled instances".format(distill_batch_size))
 distiller = models.Distiller(1, 28, 28, 10, distill_batch_size).to(device)
@@ -27,6 +32,6 @@ for i in range(x.size(0)):
   y_im = np.zeros((28, 220))
   for c in range(10):
     y_im[:, c*22:(c+1)*22] = yi[c]
-  cv2.imwrite('./ims/distillx{}.png'.format(i), xi_large)
-  cv2.imwrite('./ims/distilly{}.png'.format(i), y_im)
+  cv2.imwrite('./ims/Poor Gen/distillx{}.png'.format(i), xi_large)
+  cv2.imwrite('./ims/Poor Gen/distilly{}.png'.format(i), y_im)
   # print("[" + ','.join(['{:.2f}'.format(yi.item()) for yi in y[0]]) + "]")
