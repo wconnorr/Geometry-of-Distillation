@@ -10,6 +10,7 @@ import copy
 
 import models
 from helper import num_parameters, load_model
+from rl_helper import perform_episodes, ppo_actor_loss
 
 NOGRAD_BATCHSIZE = 4096 # higher value than training batch size, lets us parallelize geometric funcs better
 
@@ -64,10 +65,15 @@ def calc_loss_distill(model, distiller):
     x, y = distiller()
     return F.mse_loss(model(x),y).item()
 
-def calc_loss_rl(actor, env, critic, static_dataset=True, static_critic=True):
+def calc_loss_ppo(actor, critic, experience_dataset):
+
+
+  raise NotImplementedError()
+
+def rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, width, density, saveto, num_rl_episodes, static_dataset=False, static_critic=False):
   # For now: use PPO only
   # Later: try other methods, such as DQN
-  
+
   # Methods:
   #  Dataset:
   #    - Static - sampled from theta hat
@@ -76,43 +82,41 @@ def calc_loss_rl(actor, env, critic, static_dataset=True, static_critic=True):
   #    - Static - final critic phi hat corresponding to theta hat network
   #    - Treat as part of landscape: cat(theta, phi) in Theta
 
-  if static_dataset:
-    # Use theta hat to create static datset
-    dataset = perform_episodes(env, model, num_trials)
-
   alist = np.linspace(-.5, 1.5, density)
   blist = np.linspace(-width, width, density)
   amesh, bmesh = np.meshgrid(alist, blist)
   costs = []
+
+  if static_dataset:
+    experience_dataset = perform_episodes(env, actor, num_rl_episodes)
   
   loop = tqdm(total=density*density, position=0, leave=False)
   for a,b in zip(amesh.flatten(), bmesh.flatten()):
     if static_critic:
-      actor = load_parameters(actor, a, delta, b, eta)
+      # Use preloaded critic
+      set_model_parameters(actor, theta_a, a, delta, b, eta)
     else:
-      actor, critic = load_actorcritic_parameters(actor, critic, a, delta, b, eta)
+      # Consider actor-critic as a single model: interpolate both in δ, η
+      set_actorcritic_parameters(actor, theta_a, critic, theta_c, a, delta, b, eta)
     
     if not static_dataset:
       # Use current theta to create dataset
-      dataset = perform_episodes(env, actor, num_trials)
-
-    # TODO: Get and store loss
-
-  # TODO: Print graph
+      experience_dataset = perform_episodes(env, actor, num_rl_episodes)
+    #else: use dataset calculated at theta
+    costs.append(calc_loss_ppo(actor, critic, experience_dataset))
+    loop.update(1)
+  loop.close()
   
-  raise NotImplementedError()
-
-def reward_landscape(actor, env, delta, eta):
-
-  alist = np.linspace(-.5, 1.5, density)
-  blist = np.linspace(-width, width, density)
-  amesh, bmesh = np.meshgrid(alist, blist)
-  costs = []
-  
-  loop = tqdm(total=density*density, position=0, leave=False)
-  for a,b in zip(amesh.flatten(), bmesh.flatten()):
-    actor = load_parameters(actor, a, delta, b, eta)
-  raise NotImplementedError()
+  costs = np.array(costs).reshape(amesh.shape)
+  fig = plt.figure()
+  plt.contourf(amesh, bmesh, np.log(costs))#, locator=locator, levels=levels)
+  plt.plot(0, 0, marker='.', linewidth=0)
+  plt.colorbar(label="log cost")
+  plt.title("Parameter Space")#: Final Cost={:.3e}".format(actual_cost))
+  plt.xlabel("steps toward δ")
+  plt.ylabel("steps toward η")
+  fig.savefig(saveto, dpi=fig.dpi)
+  plt.close('all')
 
 def select_normalized_direction(theta):
   # Where theta is model.parameters() of the learner
@@ -133,6 +137,21 @@ def set_model_parameters(model, theta, a, delta, b, eta):
   for layer, d, e, (name, _) in zip(theta, delta, eta, model.named_parameters()):
     sd[name] = layer + a*d + b*e
   model.load_state_dict(sd)
+
+def set_actorcritic_parameters(actor, theta_a, critic, theta_c, a, delta, b, eta):
+  delta_a, delta_c = delta
+  eta_a,   eta_c   = eta
+
+  sd_a = actor.state_dict()
+  for layer, d, e, (name, _) in zip(theta_a, delta_a, eta_a, actor.named_parameters()):
+    sd_a[name] = layer + a*d + b*e
+  actor.load_state_dict(sd_a)
+
+  sd_c = critic.state_dict()
+  for layer, d, e, (name, _) in zip(theta_c, delta_c, eta_c, critic.named_parameters()):
+    sd_c[name] = layer + a*d + b*e
+  critic.load_state_dict(sd_c)
+
 
 # Produces a visualization centered on model.parameters() that extends in 2 dimension by width, with density points
 def normed_visualization(model, theta, delta, eta, width, density, calc_loss_func, data, saveto, two_points=False):
