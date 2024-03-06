@@ -76,3 +76,18 @@ def cartpole_layer_init(layer, std=ROOT_2, bias_const=0.0):
   torch.nn.init.orthogonal_(layer.weight, std)
   torch.nn.init.constant_(layer.bias, bias_const)
   return layer
+
+# Dataset that wraps memory for a dataloader
+class RLDataset(torch.utils.data.Dataset):
+  def __init__(self, rollout):
+    super().__init__()
+    self.rollout = rollout
+    self.width = len(rollout) # Number of distinct value types saved (state, action, etc.)
+    self.rollout_len, self.num_envs, _, _, _ = rollout[0].shape
+    self.full = self.rollout_len * self.num_envs
+
+  def __getitem__(self, index):
+    return [self.rollout[i][index//self.num_envs][index%self.num_envs] for i in range(self.width)]
+
+  def __len__(self):
+    return self.full

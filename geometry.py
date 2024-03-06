@@ -10,7 +10,7 @@ import copy
 
 import models
 from helper import num_parameters, load_model
-from rl_helper import perform_episodes, ppo_actor_loss
+from rl_helper import perform_in_env, ppo_actor_loss
 
 NOGRAD_BATCHSIZE = 4096 # higher value than training batch size, lets us parallelize geometric funcs better
 
@@ -70,7 +70,7 @@ def calc_loss_ppo(actor, critic, experience_dataset):
 
   raise NotImplementedError()
 
-def rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, width, density, saveto, num_rl_episodes, static_dataset=False, static_critic=False):
+def rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, width, density, saveto, num_rl_episodes, num_envs, batch_size, static_dataset=False, static_critic=False):
   # For now: use PPO only
   # Later: try other methods, such as DQN
 
@@ -88,7 +88,7 @@ def rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, width, densit
   costs = []
 
   if static_dataset:
-    experience_dataset = perform_episodes(env, actor, num_rl_episodes)
+    experience_dataloader = perform_in_env(env, actor, critic, num_rl_episodes, device, num_envs, batch_size, rollout_len=200)
   
   loop = tqdm(total=density*density, position=0, leave=False)
   for a,b in zip(amesh.flatten(), bmesh.flatten()):
@@ -101,12 +101,12 @@ def rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, width, densit
     
     if not static_dataset:
       # Use current theta to create dataset
-      experience_dataset = perform_episodes(env, actor, num_rl_episodes)
+      experience_dataloader = perform_in_env(env, actor, critic, num_rl_episodes, device, num_envs, batch_size, rollout_len=200)
     #else: use dataset calculated at theta
-    costs.append(calc_loss_ppo(actor, critic, experience_dataset))
+    costs.append(ppo_actor_loss(actor, critic, experience_dataloader, epsilon=.1, use_entropy_loss=False))
     loop.update(1)
   loop.close()
-  
+
   costs = np.array(costs).reshape(amesh.shape)
   fig = plt.figure()
   plt.contourf(amesh, bmesh, np.log(costs))#, locator=locator, levels=levels)

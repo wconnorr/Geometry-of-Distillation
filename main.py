@@ -32,12 +32,22 @@ def setup_sl(model_sd_file, distiller_sd_file, scale_mnist=False):
 
   return model, distiller, mnist
 
-def setup_rl():
-  raise NotImplementedError()
+def setup_cartpole(actor_sd_file, critic_sd_file, distiller_sd_file, num_parallel_envs):
+  actor = models.CartpoleActor() 
+  actor_sd = torch.load(actor_sd_file, map_location=device)
+  actor.load_state_dict(actor_sd)
+  critic = models.CartpoleCritic()
+  critic_sd = torch.load(critic_sd_file, map_location=device)
+  critic.load_state_dict(critic_sd)
+  distiller_sd = torch.load(distiller_sd_file, map_location=device) if distiller_sd_file[-3:] == '.pt' else load_distiller_sd_fabric(distiller_sd_file) 
+  distiller = models.CartpoleDistiller()
+  distiller.load_state_dict(distiller_sd)
 
-def graph_rl_landscape(actor, critic, static_dataset, static_critic, num_rl_episodes):
+  env = vector_env.make_cartpole_vector_env(num_parallel_envs)
 
-  env = vector_env.make_cartpole_vector_env(10)
+  return actor, critic, distiller, env
+
+def graph_rl_landscape(actor, critic, env, static_dataset, static_critic, num_rl_episodes, num_envs, batch_size):
 
   theta_a =  copy.deepcopy(list(actor.parameters()))
   theta_c =  copy.deepcopy(list(critic.parameters()))
@@ -49,7 +59,7 @@ def graph_rl_landscape(actor, critic, static_dataset, static_critic, num_rl_epis
   model_sd = copy.deepcopy(model.state_dict())
 
   exp_name = "rl_landscape"
-  rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, 1, 10, exp_name + '_cartpole.png', num_rl_episodes, static_dataset, static_critic)
+  rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, 1, 10, exp_name + '_cartpole.png', num_rl_episodes, num_envs, batch_size, static_dataset, static_critic)
 
 
 
@@ -124,7 +134,6 @@ def graph_landscapes_combined(model, theta, distiller, mnist):
   inner_loss.backward()
   inner_optimizer.step()
   inner_optimizer.zero_grad()
-  model_sd_d = copy.deepcopy(model_d.state_dict())
   theta_d = copy.deepcopy(list(model_d.parameters()))
   
   # delta=theta_d-theta # theta_d = theta + 1*delta
@@ -186,9 +195,18 @@ actor_sd_file = ''
 critic_sd_file = ''
 distiller_sd_file = ''
 
-actor, critic, distiller = setup_rl(actor_sd_file, critic_sd_file, distiller_sd_file)
+static_dataset = True
+static_critic = True
+if not static_critic:
+  raise NotImplementedError("RL experience gathering is set up only for static critic")
+num_rl_episodes = 20
+num_envs = 10
+batch_size = 2048
 
-rl_landscape()
+
+actor, critic, distiller, env = setup_cartpole(actor_sd_file, critic_sd_file, distiller_sd_file, num_envs)
+
+graph_rl_landscape(actor, critic, env, static_dataset, static_critic, num_rl_episodes, num_envs, batch_size)
 ###
 
 # model_manifold()
