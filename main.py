@@ -119,24 +119,24 @@ import copy
 ######################################
 # FIM
 
-distiller_sd = torch.load('./sl_exp/experiments/distill_long_highval/checkpoint_final1/distiller_sd.pt', map_location=device)
-distill_batch_size = distiller_sd['x'].size(0)
-print("Using {} distilled instances".format(distill_batch_size))
-distiller = models.Distiller(1, 28, 28, 10, distill_batch_size).to(device)
-distiller.load_state_dict(distiller_sd)
-with torch.no_grad():
-  x, y = distiller()
-# randomly initialize model
-model = models.SimpleConvNet(1, 28, 28, 10).to(device)
-print("Small conv network has {} parameters!".format(num_parameters(model)))
-for param in model.parameters():
-  print("\t",param.shape)
-inner_optimizer = torch.optim.SGD(model.parameters(), lr=distiller.inner_lr.item())
-inner_loss = F.mse_loss(model(x), y)
-inner_loss.backward()
-inner_optimizer.step()
-inner_optimizer.zero_grad()
+# distiller_sd = torch.load('./sl_exp/experiments/distill_long_highval/checkpoint_final1/distiller_sd.pt', map_location=device)
+# distill_batch_size = distiller_sd['x'].size(0)
+# print("Using {} distilled instances".format(distill_batch_size))
+# distiller = models.Distiller(1, 28, 28, 10, distill_batch_size).to(device)
+# distiller.load_state_dict(distiller_sd)
+# with torch.no_grad():
+#   x, y = distiller()
+# # randomly initialize model
+# model = models.SimpleConvNet(1, 28, 28, 10).to(device)
+# print("Small conv network has {} parameters!".format(num_parameters(model)))
+# for param in model.parameters():
+#   print("\t",param.shape)
+# inner_optimizer = torch.optim.SGD(model.parameters(), lr=distiller.inner_lr.item())
+# inner_loss = F.mse_loss(model(x), y)
+# inner_loss.backward()
+# inner_optimizer.step()
+# inner_optimizer.zero_grad()
 
 
-fim = calc_FIM_distill(model, distiller)
-print(fim.shape)
+# fim = calc_FIM_distill(model, distiller)
+# print(fim.shape)
