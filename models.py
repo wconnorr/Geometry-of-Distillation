@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 
-# Distillation-style wrapper to learn the teaching data directly.
-class Distiller(nn.Module):
+# Distiller w/ 3D input (images)
+class Distiller3D(nn.Module):
   def __init__(self, c, h, w, n_classes, batch_size, inner_lr=.02, inner_momentum=None, conditional_generation=False):
-    super(Distiller, self).__init__()
+    super(Distiller3D, self).__init__()
     self.conditional_generation = conditional_generation
 
     self.x = nn.Parameter(torch.randn((batch_size, c, h, w)), True)
@@ -18,6 +18,29 @@ class Distiller(nn.Module):
       self.inner_momentum = nn.Parameter(torch.tensor(inner_momentum), True)
 
   def forward(self, dummy=None): # dummy is needed for lightning, maybe?
+    if self.conditional_generation:
+      return self.x
+    else:
+      return self.x, self.y
+
+# Distiller w/ 1D input (just # features) 
+class Distiller1D(nn.Module):
+  def __init__(self, batch_size, input_features, num_classes, inner_lr=.02, inner_momentum=None, conditional_generation=False):
+    super(Distiller1D, self).__init__()
+    self.conditional_generation = conditional_generation
+
+    x = torch.randn((batch_size, input_features))
+    self.x = nn.Parameter(x, True)
+    if not conditional_generation:
+      self.y = nn.Parameter(torch.randn((batch_size, num_classes)), True)
+
+    # Inner optimizer parameters
+    if inner_lr is not None:
+      self.inner_lr = nn.Parameter(torch.tensor(inner_lr), True)
+    if inner_momentum is not None:
+      self.inner_momentum = nn.Parameter(torch.tensor(inner_momentum), True)
+
+  def forward(self):
     if self.conditional_generation:
       return self.x
     else:
@@ -72,6 +95,8 @@ class CartpoleCritic(nn.Module):
     return self.net(x.view(x.size(0),-1))
   
 # INITIALIZATION FUNCTIONS #
+ROOT_2 = 2**.5
+
 def cartpole_layer_init(layer, std=ROOT_2, bias_const=0.0):
   torch.nn.init.orthogonal_(layer.weight, std)
   torch.nn.init.constant_(layer.bias, bias_const)
@@ -83,7 +108,8 @@ class RLDataset(torch.utils.data.Dataset):
     super().__init__()
     self.rollout = rollout
     self.width = len(rollout) # Number of distinct value types saved (state, action, etc.)
-    self.rollout_len, self.num_envs, _, _, _ = rollout[0].shape
+    rollout_shape = rollout[0].shape
+    self.rollout_len, self.num_envs = rollout_shape[0], rollout_shape[1]
     self.full = self.rollout_len * self.num_envs
 
   def __getitem__(self, index):

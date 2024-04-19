@@ -70,7 +70,7 @@ def calc_loss_ppo(actor, critic, experience_dataset):
 
   raise NotImplementedError()
 
-def rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, width, density, saveto, num_rl_episodes, num_envs, batch_size, static_dataset=False, static_critic=False):
+def rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, width, density, saveto, num_rl_episodes, num_envs, batch_size, gamma, gae_lambda, static_dataset=False, static_critic=False):
   # For now: use PPO only
   # Later: try other methods, such as DQN
 
@@ -82,13 +82,13 @@ def rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, width, densit
   #    - Static - final critic phi hat corresponding to theta hat network
   #    - Treat as part of landscape: cat(theta, phi) in Theta
 
-  alist = np.linspace(-.5, 1.5, density)
+  alist = np.linspace(-width, width, density)
   blist = np.linspace(-width, width, density)
   amesh, bmesh = np.meshgrid(alist, blist)
   costs = []
 
   if static_dataset:
-    experience_dataloader = perform_in_env(env, actor, critic, num_rl_episodes, device, num_envs, batch_size, rollout_len=200)
+    experience_dataloader = perform_in_env(env, actor, critic, num_rl_episodes, device, num_envs, batch_size, gamma, gae_lambda, rollout_len=200)
   
   loop = tqdm(total=density*density, position=0, leave=False)
   for a,b in zip(amesh.flatten(), bmesh.flatten()):
@@ -101,16 +101,16 @@ def rl_landscape(actor, theta_a, critic, theta_c, env, delta, eta, width, densit
     
     if not static_dataset:
       # Use current theta to create dataset
-      experience_dataloader = perform_in_env(env, actor, critic, num_rl_episodes, device, num_envs, batch_size, rollout_len=200)
+      experience_dataloader = perform_in_env(env, actor, critic, num_rl_episodes, device, num_envs, batch_size, gamma, gae_lambda, rollout_len=200)
     #else: use dataset calculated at theta
-    costs.append(ppo_actor_loss(actor, critic, experience_dataloader, epsilon=.1, use_entropy_loss=False))
+    costs.append(ppo_actor_loss(actor, critic, experience_dataloader, epsilon=.1, use_entropy_loss=False).item())
     loop.update(1)
   loop.close()
 
   costs = np.array(costs).reshape(amesh.shape)
   fig = plt.figure()
   plt.contourf(amesh, bmesh, np.log(costs))#, locator=locator, levels=levels)
-  plt.plot(0, 0, marker='.', linewidth=0)
+  plt.plot(0, 0, marker='.', linewidth=0, color='black')
   plt.colorbar(label="log cost")
   plt.title("Parameter Space")#: Final Cost={:.3e}".format(actual_cost))
   plt.xlabel("steps toward δ")
@@ -154,7 +154,7 @@ def set_actorcritic_parameters(actor, theta_a, critic, theta_c, a, delta, b, eta
 
 
 # Produces a visualization centered on model.parameters() that extends in 2 dimension by width, with density points
-def normed_visualization(model, theta, delta, eta, width, density, calc_loss_func, data, saveto, two_points=False):
+def normed_visualization(model, theta, delta, eta, width, density, calc_loss_func, data, saveto, two_points=False, label="MNIST-trained"):
   actual_cost = calc_loss_func(model, data)
   print(actual_cost)
   print("Producing visualization...")
@@ -177,7 +177,7 @@ def normed_visualization(model, theta, delta, eta, width, density, calc_loss_fun
   # levels = np.logspace(-4.5, 8.5, 53)
   # plt.contourf(theta1_mesh, theta2_mesh, costs, locator=locator, levels=levels)
   plt.contourf(amesh, bmesh, np.log(costs))#, locator=locator, levels=levels)
-  plt.plot(0, 0, marker='.', linewidth=0, label=('MNIST-trained' if two_points else 'trained parameters'))
+  plt.plot(0, 0, marker='.', linewidth=0, label=(label if two_points else 'trained parameters'), color='black')
   if two_points:
     plt.plot(1, 0, marker='.', linewidth=0, label='Distill-trained')
     plt.legend()

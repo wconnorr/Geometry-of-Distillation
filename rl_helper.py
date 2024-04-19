@@ -8,7 +8,7 @@ from models import RLDataset
 STATE_SPACE  = 4
 ACTION_SPACE = 2
 
-def perform_in_env(env, actor, critic, num_episodes, device, num_envs, batch_size, rollout_len=200):
+def perform_in_env(env, actor, critic, num_episodes, device, num_envs, batch_size, gamma, gae_lambda, rollout_len=200):
   states = torch.zeros((rollout_len, num_envs, STATE_SPACE)).to(device)
   actions = torch.zeros((rollout_len, num_envs)).to(device)
   prior_policy = torch.zeros((rollout_len, num_envs)).to(device) # stored for chosen action only!
@@ -20,8 +20,13 @@ def perform_in_env(env, actor, critic, num_episodes, device, num_envs, batch_siz
   entropies = torch.zeros((rollout_len, num_envs)).to(device)
 
   rollout = [states, actions, prior_policy, rewards, dones, values, returns, advantages, entropies]
+
+  # Begin by resetting env
+  state = torch.from_numpy(env.reset()[0]).to(device)
+  
   for ep in range(num_episodes):
     _, state, done = perform_rollout(actor, critic, env, rollout, rollout_len, state, device)
+  general_advantage_estimation(critic, rollout, state, done, gamma, gae_lambda, device)
   memory_dataloader = DataLoader(RLDataset(rollout), batch_size=batch_size, shuffle=True)
   return memory_dataloader
 
@@ -40,7 +45,7 @@ def ppo_actor_loss(actor, critic, experience_dataloader, epsilon=.1, use_entropy
 def calculate_actor_loss(actor, transition, epsilon):
   states, actions, prior_policy, _, _, _, _, advantages, entropies = transition
 
-  current_policy = actor(states)[F.one_hot(actions.long(), ACTION_SPACE)]
+  current_policy = actor(states)[F.one_hot(actions.long(), ACTION_SPACE).bool()]
 
   # calculate ratio quicker this way, rather than softmaxing them both
   ratio = (current_policy - prior_policy).exp()
