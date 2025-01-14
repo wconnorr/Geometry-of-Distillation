@@ -68,11 +68,11 @@ class CartpoleActor(nn.Module):
     hidden_size = 64
 
     # Note: Weight norm does not help Cartpole Distillation!!!
-    self.net = nn.Sequential(cartpole_layer_init(nn.Linear(state_size, hidden_size)),
+    self.net = nn.Sequential(rl_layer_init(nn.Linear(state_size, hidden_size)),
                              nn.Tanh(),
-                             cartpole_layer_init(nn.Linear(hidden_size, hidden_size)),
+                             rl_layer_init(nn.Linear(hidden_size, hidden_size)),
                              nn.Tanh(),
-                             cartpole_layer_init(nn.Linear(hidden_size, action_size), std=.01))
+                             rl_layer_init(nn.Linear(hidden_size, action_size), std=.01))
 
 
   def forward(self, x):
@@ -85,19 +85,84 @@ class CartpoleCritic(nn.Module):
 
     hidden_size = 64
 
-    self.net = nn.Sequential(cartpole_layer_init(nn.Linear(state_size, hidden_size)),
+    self.net = nn.Sequential(rl_layer_init(nn.Linear(state_size, hidden_size)),
                              nn.Tanh(),
-                             cartpole_layer_init(nn.Linear(hidden_size, hidden_size)),
+                             rl_layer_init(nn.Linear(hidden_size, hidden_size)),
                              nn.Tanh(),
-                             cartpole_layer_init(nn.Linear(hidden_size, 1), std=1.))
+                             rl_layer_init(nn.Linear(hidden_size, 1), std=1.))
 
   def forward(self, x):
     return self.net(x.view(x.size(0),-1))
-  
+
+# Policy Gradient Architectures
+class AtariActor(nn.Module): # an actor-critic neural network
+    def __init__(self, state_channels, num_actions, hidden_convs=3):
+        super(AtariActor, self).__init__()
+
+        convs = [
+          rl_layer_init(nn.Conv2d(state_channels, 32, 8, stride=4)),
+          nn.ReLU(),
+          rl_layer_init(nn.Conv2d(32,64, 4, stride=2)),
+          nn.ReLU(),
+          rl_layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+          nn.ReLU()
+        ]
+        for _ in range(hidden_convs-3):
+          convs.append(rl_layer_init(nn.Conv2d(64, 64, 3, stride=1, padding=1)))
+          convs.append(nn.ReLU())
+        self.convs = nn.Sequential(*convs)
+
+        # self.convs = nn.Sequential(
+        #   rl_layer_init(nn.Conv2d(state_channels, 32, 8, stride=4)),
+        #   nn.ReLU(),
+        #   rl_layer_init(nn.Conv2d(32,64, 4, stride=2)),
+        #   nn.ReLU(),
+        #   rl_layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+        #   nn.ReLU()
+        # )
+        h, w = (7,7)
+        self.head = nn.Sequential(
+          rl_layer_init(nn.Linear(64*h*w, 512)),
+          nn.ReLU(),
+          rl_layer_init(nn.Linear(512, num_actions), std=.01)
+        )
+
+    def forward(self, x):
+        x = self.convs(x)
+        x = x.view(x.size(0), -1)
+        return self.head(x)
+
+class AtariCritic(nn.Module): # an actor-critic neural network
+    def __init__(self, state_channels):
+        super(AtariCritic, self).__init__()
+
+        self.convs = nn.Sequential(
+          rl_layer_init(nn.Conv2d(state_channels, 32, 8, stride=4)),
+          nn.ReLU(),
+          rl_layer_init(nn.Conv2d(32,64, 4, stride=2)),
+          nn.ReLU(),
+          rl_layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+          nn.ReLU()
+        )
+        h, w = (7,7)
+        self.head = nn.Sequential(
+          rl_layer_init(nn.Linear(64*h*w, 512)),
+          nn.ReLU(),
+          rl_layer_init(nn.Linear(512, 1), std=1.)
+        )
+
+    def forward(self, x):
+        x = self.convs(x)
+        x = x.view(x.size(0), -1)
+        return self.head(x)
+
+
+
+
 # INITIALIZATION FUNCTIONS #
 ROOT_2 = 2**.5
 
-def cartpole_layer_init(layer, std=ROOT_2, bias_const=0.0):
+def rl_layer_init(layer, std=ROOT_2, bias_const=0.0):
   torch.nn.init.orthogonal_(layer.weight, std)
   torch.nn.init.constant_(layer.bias, bias_const)
   return layer
